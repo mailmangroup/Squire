@@ -110,8 +110,6 @@ var replaceStyles = function ( node, parent ) {
 };
 
 var stylesRewriters = {
-    P: replaceStyles,
-    SPAN: replaceStyles,
     STRONG: replaceWithTag( 'B' ),
     EM: replaceWithTag( 'I' ),
     INS: replaceWithTag( 'U' ),
