@@ -71,33 +71,6 @@ var replaceWithTag = function ( tag ) {
 };
 
 var stylesRewriters = {
-    SPAN: function ( span, parent ) {
-        var style = span.style,
-            doc = span.ownerDocument,
-            attr, converter, css, newTreeBottom, newTreeTop, el;
-
-        for ( attr in spanToSemantic ) {
-            converter = spanToSemantic[ attr ];
-            css = style[ attr ];
-            if ( css && converter.regexp.test( css ) ) {
-                el = converter.replace( doc, css );
-                if ( newTreeBottom ) {
-                    newTreeBottom.appendChild( el );
-                }
-                newTreeBottom = el;
-                if ( !newTreeTop ) {
-                    newTreeTop = el;
-                }
-            }
-        }
-
-        if ( newTreeTop ) {
-            newTreeBottom.appendChild( empty( span ) );
-            parent.replaceChild( newTreeTop, span );
-        }
-
-        return newTreeBottom || span;
-    },
     STRONG: replaceWithTag( 'B' ),
     EM: replaceWithTag( 'I' ),
     STRIKE: replaceWithTag( 'S' ),
