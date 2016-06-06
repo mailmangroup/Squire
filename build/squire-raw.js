@@ -175,7 +175,8 @@ var inlineNodeNames  = /^(?:#text|A(?:BBR|CRONYM)?|B(?:R|D[IO])?|C(?:ITE|ODE)|D(
 var leafNodeNames = {
     BR: 1,
     IMG: 1,
-    INPUT: 1
+    INPUT: 1,
+    HR: 1
 };
 
 function every ( nodeList, fn ) {
@@ -1704,33 +1705,6 @@ var replaceWithTag = function ( tag ) {
 };
 
 var stylesRewriters = {
-    SPAN: function ( span, parent ) {
-        var style = span.style,
-            doc = span.ownerDocument,
-            attr, converter, css, newTreeBottom, newTreeTop, el;
-
-        for ( attr in spanToSemantic ) {
-            converter = spanToSemantic[ attr ];
-            css = style[ attr ];
-            if ( css && converter.regexp.test( css ) ) {
-                el = converter.replace( doc, css );
-                if ( newTreeBottom ) {
-                    newTreeBottom.appendChild( el );
-                }
-                newTreeBottom = el;
-                if ( !newTreeTop ) {
-                    newTreeTop = el;
-                }
-            }
-        }
-
-        if ( newTreeTop ) {
-            newTreeBottom.appendChild( empty( span ) );
-            parent.replaceChild( newTreeTop, span );
-        }
-
-        return newTreeBottom || span;
-    },
     STRONG: replaceWithTag( 'B' ),
     EM: replaceWithTag( 'I' ),
     STRIKE: replaceWithTag( 'S' ),
@@ -1796,7 +1770,7 @@ var stylesRewriters = {
     }
 };
 
-var allowedBlock = /^(?:A(?:DDRESS|RTICLE|SIDE|UDIO)|BLOCKQUOTE|CAPTION|D(?:[DLT]|IV)|F(?:IGURE|IGCAPTION|OOTER)|H[1-6]|HEADER|L(?:ABEL|EGEND|I)|O(?:L|UTPUT)|P(?:RE)?|SECTION|T(?:ABLE|BODY|D|FOOT|H|HEAD|R)|UL)$/;
+var allowedBlock = /^(?:A(?:DDRESS|RTICLE|SIDE|UDIO)|IFRAME|BLOCKQUOTE|CAPTION|D(?:[DLT]|IV)|F(?:IGURE|IGCAPTION|OOTER)|H[1-6]|HEADER|L(?:ABEL|EGEND|I)|O(?:L|UTPUT)|P(?:RE)?|SECTION|T(?:ABLE|BODY|D|FOOT|H|HEAD|R)|UL)$/;
 
 var blacklist = /^(?:HEAD|META|STYLE)/;
 
