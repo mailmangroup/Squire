@@ -36,10 +36,34 @@ Installation and usage
 5. Use the API below with the `editor` object to set and get data and integrate
    with your application or framework.
 
+### Using Squire without an iframe.
+
+Squire can also be used without an iframe for the document. To use it this way:
+
+1. Add a `<script>` tag to load in `build/squire.js` (or `squire-raw.js` for the debuggable unminified version).
+2. Get a reference to the DOM node in the document that you want to make into the rich textarea, e.g. `node = document.getElementById( 'editor-div' )`.
+3. Call `editor = new Squire( node )`. This will instantiate a new Squire instance. Please note, this will remove any current children of the node; you must use the `setHTML` command after initialising to set any content.
+
+You can have multiple squire instances in a single page without issue. If you are using the editor as part of a long lived single-page app, be sure to call `editor.destroy()` once you have finished using an instance to ensure it doesn't leak resources.
+
+### Security
+
+Malicious HTML can be a source of XSS and other security issues. I highly recommended you use [DOMPurify](https://github.com/cure53/DOMPurify) with Squire to prevent these security issues. If DOMPurify is included in the page (with the standard global variable), Squire will automatically sanitise any HTML passed in via `setHTML` or `insertHTML` (which includes HTML the user pastes from the clipboard).
+
+You can override this by setting properties on the config object (the second argument passed to the constructor, see below). The properties are:
+
+* **isSetHTMLSanitized**: `Boolean`
+  Should the HTML passed via calls to `setHTML` be passed to the sanitizer? If your app always sanitizes the HTML in some other way before calling this, you may wish to set this to `false` to avoid the overhead.
+* **isInsertedHTMLSanitized**: `Boolean` (defaults to `true`) – Should the HTML passed via calls to `insertHTML` be passed to the sanitizer? This includes when the user pastes from the clipboard. Since you cannot control what other apps put on the clipboard, it is highly recommended you do not set this to `false`.
+* **sanitizeToDOMFragment**: `(html: String, isPaste: Boolean, self: Squire) -> DOMFragment`
+  A custom sanitization function. This will be called instead of the default call to DOMPurify to sanitize the potentially dangerous HTML. It is passed three arguments: the first is the string of HTML, the second is a boolean indicating if this content has come from the clipboard, rather than an explicit call by your own code, the third is the squire instance. It must return a DOM Fragment node belonging to the same document as the editor's root node, with the contents being clean DOM nodes to set/insert.
+
 Advanced usage
 --------------
 
 If you load the library into a top-level document (rather than an iframe), or load it in an iframe without the `data-squireinit="true"` attribute on its `<html>` element, it will not turn the page into an editable document, but will instead add a constructor named `Squire` to the global scope.
+
+You can also require the NPM package [squire-rte](https://www.npmjs.com/package/squire-rte) to import `Squire` in a modular program without adding names to the global namespace.
 
 Call `new Squire( document )`, with the `document` from an iframe to instantiate multiple rich text areas on the same page efficiently. Note, for compatibility with all browsers (particularly Firefox), you MUST wait for the iframe's `onload` event to fire before instantiating Squire.
 
@@ -82,6 +106,8 @@ Attach an event listener to the editor. The handler can be either a function or 
 * **input**: The user inserted, deleted or changed the style of some text; in other words, the result for `editor.getHTML()` will have changed.
 * **pathChange**: The path (see getPath documentation) to the cursor has changed. The new path is available as the `path` property on the event object.
 * **select**: The user selected some text.
+* **cursor**: The user cleared their selection or moved the cursor to a
+  different position.
 * **undoStateChange**: The availability of undo and/or redo has changed. The event object has two boolean properties, `canUndo` and `canRedo` to let you know the new state.
 * **willPaste**: The user is pasting content into the document. The content that will be inserted is available as the `fragment` property on the event object. You can modify this fragment in your event handler to change what will be pasted. You can also call the `preventDefault` on the event object to cancel the paste operation.
 
@@ -159,9 +185,10 @@ Returns the text currently selected in the editor.
 
 Inserts an image at the current cursor location.
 
-The method takes one argument:
+The method takes two arguments:
 
 * **src**: The source path for the image.
+* **attributes**: (optional) An object containing other attributes to set on the `<img>` node. e.g. `{ class: 'class-name' }`. Any `src` attribute will be overwritten by the url given as the first argument.
 
 Returns a reference to the newly inserted image element.
 
@@ -177,11 +204,16 @@ Returns self (the Squire instance).
 
 ### getPath
 
-Returns the path through the DOM tree from the `<body>` element to the current current cursor position. This is a string consisting of the tag, id and class names in CSS format. For example `BODY>BLOCKQUOTE>DIV#id>STRONG>SPAN.font>EM`. If a selection has been made, so different parts of the selection may have different paths, the value will be `(selection)`. The path is useful for efficiently determining the current formatting for bold, italic, underline etc, and thus determining button state. If a selection has been made, you can has the `hasFormat` method instead to get the current state for the properties you care about.
+Returns the path through the DOM tree from the `<body>` element to the current current cursor position. This is a string consisting of the tag, id, class, font, and color names in CSS format. For example `BODY>BLOCKQUOTE>DIV#id>STRONG>SPAN.font[fontFamily=Arial,sans-serif]>EM`. If a selection has been made, so different parts of the selection may have different paths, the value will be `(selection)`. The path is useful for efficiently determining the current formatting for bold, italic, underline etc, and thus determining button state. If a selection has been made, you can has the `hasFormat` method instead to get the current state for the properties you care about.
 
 ### getFontInfo
 
 Returns an object containing the active font family, size, colour and background colour for the the current cursor position, if any are set. The property names are respectively `family`, `size`, `color` and `backgroundColor`. It looks at style attributes to detect this, so will not detect `<FONT>` tags or non-inline styles. If a selection across multiple elements has been made, it will return an empty object.
+
+### getCursorPosition
+
+Returns a bounding client rect (top/left/right/bottom properties relative to
+the viewport) for the current selection/cursor.
 
 ### getSelection
 
@@ -434,3 +466,8 @@ Change the **inline** formatting of the current selection. This is a high-level 
 3. A Range object with the range to apply the formatting changes to (or `null`/omit to apply to current selection).
 4. A boolean (defaults to `false` if omitted). If `true`, any formatting nodes that cover at least part of the selected range will be removed entirely (so will potentially be removed from text outside the selected range as well). If `false`, the formatting nodes will continue to apply to any text outside the selection. This is useful, for example, when removing links. If any of the text in the selection is part of a link, the whole link is removed, rather than the link continuing to apply to bits of text outside the selection.
 
+### modifyDocument
+
+Takes in a function that can modify the document without the modifications being treated as input.
+
+This is useful when the document needs to be changed programmatically, but those changes should not raise input events or modify the undo state.
