@@ -180,6 +180,7 @@ TreeWalker.prototype.previousPONode = function () {
     }
 };
 
+
 var inlineNodeNames  = /^(?:#text|A(?:BBR|CRONYM)?|B(?:R|D[IO])?|C(?:ITE|ODE)|D(?:ATA|EL|FN)|EM|FONT|HR|I(?:FRAME|MG|NPUT|NS)?|KBD|Q|R(?:P|T|UBY)|S(?:AMP|MALL|PAN|TR(?:IKE|ONG)|U[BP])?|TIME|U|VAR|WBR)$/;
 
 var leafNodeNames = {
@@ -501,7 +502,7 @@ function fixContainer ( container, root ) {
         if ( !isBR && isInline( child ) ) {
             if ( !wrapper ) {
                  wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                    config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes );
             }
             wrapper.appendChild( child );
             i -= 1;
@@ -509,7 +510,7 @@ function fixContainer ( container, root ) {
         } else if ( isBR || wrapper ) {
             if ( !wrapper ) {
                 wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                    config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes );
             }
             fixCursor( wrapper, root );
             if ( isBR ) {
@@ -2638,7 +2639,7 @@ proto.createElement = function ( tag, props, children ) {
 proto.createDefaultBlock = function ( children ) {
     var config = this._config;
     return fixCursor(
-        this.createElement( config.blockTag, config.blockAttributes, children ),
+        this.createElement( config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes, children ),
         this._root
     );
 };
@@ -3691,7 +3692,7 @@ var splitBlock = function ( self, block, node, offset ) {
 
     if ( !splitTag ) {
         splitTag = config.blockTag;
-        splitProperties = config.blockAttributes;
+        splitProperties = typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes;
     }
 
     // Make sure the new node is the correct type.

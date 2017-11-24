@@ -322,7 +322,7 @@ function fixContainer ( container, root ) {
         if ( !isBR && isInline( child ) ) {
             if ( !wrapper ) {
                  wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                    config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes );
             }
             wrapper.appendChild( child );
             i -= 1;
@@ -330,7 +330,7 @@ function fixContainer ( container, root ) {
         } else if ( isBR || wrapper ) {
             if ( !wrapper ) {
                 wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                    config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes );
             }
             fixCursor( wrapper, root );
             if ( isBR ) {

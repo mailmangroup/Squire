@@ -199,7 +199,7 @@ proto.createElement = function ( tag, props, children ) {
 proto.createDefaultBlock = function ( children ) {
     var config = this._config;
     return fixCursor(
-        this.createElement( config.blockTag, config.blockAttributes, children ),
+        this.createElement( config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes, children ),
         this._root
     );
 };
@@ -1252,7 +1252,7 @@ var splitBlock = function ( self, block, node, offset ) {
 
     if ( !splitTag ) {
         splitTag = config.blockTag;
-        splitProperties = config.blockAttributes;
+        splitProperties = typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes;
     }
 
     // Make sure the new node is the correct type.
