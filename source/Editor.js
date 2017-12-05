@@ -206,6 +206,7 @@ proto.createDefaultBlock = function ( children ) {
 
 proto.didError = function ( error ) {
     console.log( error );
+    throw error;
 };
 
 proto.getDocument = function () {
