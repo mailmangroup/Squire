@@ -944,7 +944,6 @@ var insertTreeFragmentIntoRange = function ( range, frag, root ) {
     replaceBlock = !!block && isEmptyBlock( block );
     if ( block && firstBlockInFrag && !replaceBlock &&
             // Don't merge table cells or PRE elements into block
-            !getNearest( firstBlockInFrag, frag, 'SECTION' ) &&
             !getNearest( firstBlockInFrag, frag, 'PRE' ) &&
             !getNearest( firstBlockInFrag, frag, 'TABLE' ) ) {
         moveRangeBoundariesUpTree( range, block, block, root );
@@ -1886,7 +1885,6 @@ var replaceStyles = function ( node, parent ) {
 
 var stylesRewriters = {
     P: replaceStyles,
-    SPAN: replaceStyles,
     STRONG: replaceWithTag( 'B' ),
     EM: replaceWithTag( 'I' ),
     INS: replaceWithTag( 'U' ),
