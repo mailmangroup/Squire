@@ -36,7 +36,6 @@ Squire.expandRangeToBlockBoundaries = expandRangeToBlockBoundaries;
 Squire.onPaste = onPaste;
 
 // Editor.js exports
-Squire.addLinks = addLinks;
 Squire.splitBlock = splitBlock;
 Squire.startSelectionId = startSelectionId;
 Squire.endSelectionId = endSelectionId;
