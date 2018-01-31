@@ -1989,6 +1989,10 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
                 i -= 1;
                 l -= 1;
                 continue;
+            } else if ( nodeName === 'svg' ) {
+                i -= 1;
+                l -= 1;
+                continue;
             } else if ( !allowedBlock.test( nodeName ) && !isInline( child ) ) {
                 i -= 1;
                 l += childLength - 1;
