@@ -251,7 +251,15 @@ function isBlock ( node ) {
 function isContainer ( node ) {
     return getNodeCategory( node ) === CONTAINER;
 }
+function getClassName( node ) {
 
+    // SVG ELEMENTS HAVE AN OBJECT FOR A CLASSNAME
+    if ( typeof node.className === 'object' && typeof node.className.baseVal !== 'undefined' ) {
+        return node.className.baseVal;
+    } else {
+        return node.className;
+    }
+}
 function getBlockWalker ( node, root ) {
     var walker = new TreeWalker( root, SHOW_ELEMENT, isBlock );
     walker.currentNode = node;
@@ -275,7 +283,7 @@ function areAlike ( node, node2 ) {
         node.nodeType === node2.nodeType &&
         node.nodeName === node2.nodeName &&
         node.nodeName !== 'A' &&
-        node.className === node2.className &&
+        getClassName( node ) === getClassName( node2 ) &&
         ( ( !node.style && !node2.style ) ||
           node.style.cssText === node2.style.cssText )
     );
@@ -320,7 +328,7 @@ function getPath ( node, root ) {
             if ( id = node.id ) {
                 path += '#' + id;
             }
-            if ( className = node.className.trim() ) {
+            if ( className = getClassName( node ).trim() ) {
                 classNames = className.split( /\s\s*/ );
                 classNames.sort();
                 path += '.';
