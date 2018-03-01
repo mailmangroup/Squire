@@ -420,6 +420,7 @@ function fixCursor ( node, root ) {
     var doc = node.ownerDocument;
     var originalNode = node;
     var fixer, child;
+    var isSvgChild, svgNode = node;
 
     if ( node === root ) {
         if ( !( child = node.firstChild ) || child.nodeName === 'BR' ) {
@@ -433,9 +434,18 @@ function fixCursor ( node, root ) {
             node = fixer;
             fixer = null;
         }
+    } else if ( svgNode ) {
+
+        while ( !isSvgChild && svgNode && svgNode !== root ) {
+            if ( svgNode && svgNode.tagName === 'svg' ) {
+                isSvgChild = true;
+            } else {
+                svgNode = svgNode.parentNode;
+            }
+        }
     }
 
-    if ( node.nodeType === TEXT_NODE ) {
+    if ( node.nodeType === TEXT_NODE || isSvgChild ) {
         return originalNode;
     }
 
