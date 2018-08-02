@@ -59,7 +59,8 @@ var onKey = function ( event ) {
 
     if ( this._keyHandlers[ key ] ) {
         this._keyHandlers[ key ]( this, event, range );
-    } else if ( key.length === 1 && !range.collapsed ) {
+    } else if ( !range.collapsed && !event.ctrlKey && !event.metaKey &&
+            ( event.key || key ).length === 1 ) {
         // Record undo checkpoint.
         this.saveUndoState( range );
         // Delete the selection
@@ -245,7 +246,7 @@ var keyHandlers = {
             }
             nodeAfterSplit = child;
         }
-        range = self._createRange( nodeAfterSplit, 0 );
+        range = self.createRange( nodeAfterSplit, 0 );
         self.setSelection( range );
         self._updatePath( range, true );
     },
@@ -430,12 +431,15 @@ var keyHandlers = {
         // the link text.
         node = range.endContainer;
         parent = node.parentNode;
-        if ( range.collapsed && parent.nodeName === 'A' &&
-                !node.nextSibling && range.endOffset === getLength( node ) ) {
-            range.setStartAfter( parent );
+        if ( range.collapsed && range.endOffset === getLength( node ) ) {
+            if ( node.nodeName === 'A' ) {
+                range.setStartAfter( node );
+            } else if ( parent.nodeName === 'A' && !node.nextSibling ) {
+                range.setStartAfter( parent );
+            }
         }
         // Delete the selection if not collapsed
-        else if ( !range.collapsed ) {
+        if ( !range.collapsed ) {
             deleteContentsOfRange( range, self._root );
             self._ensureBottomLine();
             self.setSelection( range );
