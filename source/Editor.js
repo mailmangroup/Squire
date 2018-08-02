@@ -175,7 +175,9 @@ proto.setConfig = function ( config ) {
             colour: 'colour',
             fontFamily: 'font',
             fontSize: 'size',
-            highlight: 'highlight'
+            highlight: 'highlight',
+            lineHeight: 'lineHeight',
+            letterSpacing: 'letterSpacing'
         },
         leafNodeNames: leafNodeNames,
         undo: {

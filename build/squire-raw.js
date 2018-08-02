@@ -2661,7 +2661,9 @@ proto.setConfig = function ( config ) {
             colour: 'colour',
             fontFamily: 'font',
             fontSize: 'size',
-            highlight: 'highlight'
+            highlight: 'highlight',
+            lineHeight: 'lineHeight',
+            letterSpacing: 'letterSpacing'
         },
         leafNodeNames: leafNodeNames,
         undo: {
@@ -4496,6 +4498,36 @@ proto.setFontSize = function ( size ) {
     return this.focus();
 };
 
+proto.setLineHeight = function ( size ) {
+    var className = this._config.classNames.lineHeight;
+    this.changeFormat( size ? {
+        tag: 'SPAN',
+        attributes: {
+            'class': className,
+            style: 'line-height: ' + size
+        }
+    } : null, {
+        tag: 'SPAN',
+        attributes: { 'class': className }
+    });
+    return this.focus();
+};
+
+proto.setLetterSpacing = function ( size ) {
+    var className = this._config.classNames.letterSpacing;
+    this.changeFormat( size ? {
+        tag: 'SPAN',
+        attributes: {
+            'class': className,
+            style: 'letter-spacing: ' +
+            ( typeof size === 'number' ? size + 'px' : size )
+        }
+    } : null, {
+        tag: 'SPAN',
+        attributes: { 'class': className }
+    });
+    return this.focus();
+};
 proto.setTextColour = function ( colour ) {
     var className = this._config.classNames.colour;
     this.changeFormat( colour ? {
