@@ -338,7 +338,10 @@ function fixContainer ( container, root ) {
     for ( i = 0, l = children.length; i < l; i += 1 ) {
         child = children[i];
         isBR = child.nodeName === 'BR';
-        if ( !isBR && isInline( child ) ) {
+        if ( child.nodeName === 'HR' ) {
+            i -= 1;
+            l -= 1;
+        } else if ( !isBR && isInline( child ) ) {
             if ( !wrapper ) {
                  wrapper = createElement( doc,
                     config.blockTag, typeof config.blockAttributes === 'function' ? config.blockAttributes() : config.blockAttributes );
