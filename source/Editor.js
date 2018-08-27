@@ -1846,7 +1846,7 @@ proto.insertHTML = function ( html, isPaste ) {
             defaultPrevented: false
         };
 
-        cleanTree( frag );
+        cleanTree( frag, config );
         cleanupBRs( frag, root, false );
         removeEmptyInlines( frag );
         frag.normalize();
