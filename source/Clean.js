@@ -13,24 +13,24 @@ var fontSizes = {
 var styleToSemantic = {
     backgroundColor: {
         regexp: notWS,
-        replace: function ( doc, colour ) {
+        replace: function ( doc, classNames, colour ) {
             return createElement( doc, 'SPAN', {
-                'class': 'highlight',
+                'class': classNames.highlight,
                 style: 'background-color:' + colour
             });
         }
     },
     color: {
         regexp: notWS,
-        replace: function ( doc, colour ) {
+        replace: function ( doc, classNames, colour ) {
             return createElement( doc, 'SPAN', {
-                'class': 'colour',
+                'class': classNames.colour,
                 style: 'color:' + colour
             });
         }
     },
     fontWeight: {
-        regexp: /^bold/i,
+        regexp: /^bold|^700/i,
         replace: function ( doc ) {
             return createElement( doc, 'B' );
         }
@@ -43,18 +43,18 @@ var styleToSemantic = {
     },
     fontFamily: {
         regexp: notWS,
-        replace: function ( doc, family ) {
+        replace: function ( doc, classNames, family ) {
             return createElement( doc, 'SPAN', {
-                'class': 'font',
+                'class': classNames.fontFamily,
                 style: 'font-family:' + family
             });
         }
     },
     fontSize: {
         regexp: notWS,
-        replace: function ( doc, size ) {
+        replace: function ( doc, classNames, size ) {
             return createElement( doc, 'SPAN', {
-                'class': 'size',
+                'class': classNames.fontSize,
                 style: 'font-size:' + size
             });
         }
@@ -76,7 +76,7 @@ var replaceWithTag = function ( tag ) {
     };
 };
 
-var replaceStyles = function ( node, parent ) {
+var replaceStyles = function ( node, parent, config ) {
     var style = node.style;
     var doc = node.ownerDocument;
     var attr, converter, css, newTreeBottom, newTreeTop, el;
@@ -85,7 +85,7 @@ var replaceStyles = function ( node, parent ) {
         converter = styleToSemantic[ attr ];
         css = style[ attr ];
         if ( css && converter.regexp.test( css ) ) {
-            el = converter.replace( doc, css );
+            el = converter.replace( doc, config.classNames, css );
             if ( !newTreeTop ) {
                 newTreeTop = el;
             }
@@ -114,16 +114,17 @@ var stylesRewriters = {
     EM: replaceWithTag( 'I' ),
     INS: replaceWithTag( 'U' ),
     STRIKE: replaceWithTag( 'S' ),
-    FONT: function ( node, parent ) {
-        var face = node.face,
-            size = node.size,
-            colour = node.color,
-            doc = node.ownerDocument,
-            fontSpan, sizeSpan, colourSpan,
-            newTreeBottom, newTreeTop;
+    FONT: function ( node, parent, config ) {
+        var face = node.face;
+        var size = node.size;
+        var colour = node.color;
+        var doc = node.ownerDocument;
+        var classNames = config.classNames;
+        var fontSpan, sizeSpan, colourSpan;
+        var newTreeBottom, newTreeTop;
         if ( face ) {
             fontSpan = createElement( doc, 'SPAN', {
-                'class': 'font',
+                'class': classNames.fontFamily,
                 style: 'font-family:' + face
             });
             newTreeTop = fontSpan;
@@ -131,7 +132,7 @@ var stylesRewriters = {
         }
         if ( size ) {
             sizeSpan = createElement( doc, 'SPAN', {
-                'class': 'size',
+                'class': classNames.fontSize,
                 style: 'font-size:' + fontSizes[ size ] + 'px'
             });
             if ( !newTreeTop ) {
@@ -147,7 +148,7 @@ var stylesRewriters = {
                 colour = '#' + colour;
             }
             colourSpan = createElement( doc, 'SPAN', {
-                'class': 'colour',
+                'class': classNames.colour,
                 style: 'color:' + colour
             });
             if ( !newTreeTop ) {
@@ -165,9 +166,9 @@ var stylesRewriters = {
         newTreeBottom.appendChild( empty( node ) );
         return newTreeBottom;
     },
-    TT: function ( node, parent ) {
+    TT: function ( node, parent, config ) {
         var el = createElement( node.ownerDocument, 'SPAN', {
-            'class': 'font',
+            'class': config.classNames.fontFamily,
             style: 'font-family:menlo,consolas,"courier new",monospace'
         });
         parent.replaceChild( el, node );
@@ -176,7 +177,7 @@ var stylesRewriters = {
     }
 };
 
-var allowedBlock = /^(?:A(?:DDRESS|RTICLE|SIDE|UDIO)|BLOCKQUOTE|CAPTION|D(?:[DLT]|IV)|F(?:IGURE|IGCAPTION|OOTER)|H[1-6]|HEADER|L(?:ABEL|EGEND|I)|O(?:L|UTPUT)|P(?:RE)?|SECTION|T(?:ABLE|BODY|D|FOOT|H|HEAD|R)|UL)$/;
+var allowedBlock = /^(?:A(?:DDRESS|RTICLE|SIDE|UDIO)|BLOCKQUOTE|CAPTION|D(?:[DLT]|IV)|F(?:IGURE|IGCAPTION|OOTER)|H[1-6]|HEADER|L(?:ABEL|EGEND|I)|O(?:L|UTPUT)|P(?:RE)?|SECTION|T(?:ABLE|BODY|D|FOOT|H|HEAD|R)|COL(?:GROUP)?|UL)$/;
 
 var blacklist = /^(?:HEAD|META|STYLE)/;
 
@@ -191,7 +192,7 @@ var walker = new TreeWalker( null, SHOW_TEXT|SHOW_ELEMENT, function () {
        and whitespace nodes.
     2. Convert inline tags into our preferred format.
 */
-var cleanTree = function cleanTree ( node, preserveWS ) {
+var cleanTree = function cleanTree ( node, config, preserveWS ) {
     var children = node.childNodes,
         nonInlineParent, i, l, child, nodeName, nodeType, rewriter, childLength,
         startsWithWS, endsWithWS, data, sibling;
@@ -210,7 +211,7 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
         if ( nodeType === ELEMENT_NODE ) {
             childLength = child.childNodes.length;
             if ( rewriter ) {
-                child = rewriter( child, node );
+                child = rewriter( child, node, config );
             } else if ( blacklist.test( nodeName ) ) {
                 node.removeChild( child );
                 i -= 1;
@@ -223,7 +224,8 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
                 continue;
             }
             if ( childLength ) {
-                cleanTree( child, preserveWS || ( nodeName === 'PRE' ) );
+                cleanTree( child, config,
+                    preserveWS || ( nodeName === 'PRE' ) );
             }
         } else {
             if ( nodeType === TEXT_NODE ) {
@@ -241,7 +243,7 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
                         nodeName = sibling.nodeName;
                         if ( nodeName === 'IMG' ||
                                 ( nodeName === '#text' &&
-                                    /\S/.test( sibling.data ) ) ) {
+                                    notWS.test( sibling.data ) ) ) {
                             break;
                         }
                         if ( !isInline( sibling ) ) {
@@ -249,14 +251,14 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
                             break;
                         }
                     }
-                    data = data.replace( /^\s+/g, sibling ? ' ' : '' );
+                    data = data.replace( /^[ \t\r\n]+/g, sibling ? ' ' : '' );
                 }
                 if ( endsWithWS ) {
                     walker.currentNode = child;
                     while ( sibling = walker.nextNode() ) {
                         if ( nodeName === 'IMG' ||
                                 ( nodeName === '#text' &&
-                                    /\S/.test( sibling.data ) ) ) {
+                                    notWS.test( sibling.data ) ) ) {
                             break;
                         }
                         if ( !isInline( sibling ) ) {
@@ -264,7 +266,7 @@ var cleanTree = function cleanTree ( node, preserveWS ) {
                             break;
                         }
                     }
-                    data = data.replace( /\s+$/g, sibling ? ' ' : '' );
+                    data = data.replace( /[ \t\r\n]+$/g, sibling ? ' ' : '' );
                 }
                 if ( data ) {
                     child.data = data;
@@ -305,16 +307,17 @@ var notWSTextNode = function ( node ) {
         node.nodeName === 'BR' :
         notWS.test( node.data );
 };
-var isLineBreak = function ( br ) {
-    var block = br.parentNode,
-        walker;
+var isLineBreak = function ( br, isLBIfEmptyBlock ) {
+    var block = br.parentNode;
+    var walker;
     while ( isInline( block ) ) {
         block = block.parentNode;
     }
     walker = new TreeWalker(
         block, SHOW_ELEMENT|SHOW_TEXT, notWSTextNode );
     walker.currentNode = br;
-    return !!walker.nextNode();
+    return !!walker.nextNode() ||
+        ( isLBIfEmptyBlock && !walker.previousNode() );
 };
 
 // <br> elements are treated specially, and differently depending on the
@@ -323,11 +326,11 @@ var isLineBreak = function ( br ) {
 // line breaks by wrapping the inline text in a <div>. Browsers that want <br>
 // elements at the end of each block will then have them added back in a later
 // fixCursor method call.
-var cleanupBRs = function ( node, root ) {
-    var brs = node.querySelectorAll( 'BR' ),
-        brBreaksLine = [],
-        l = brs.length,
-        i, br, parent;
+var cleanupBRs = function ( node, root, keepForBlankLine ) {
+    var brs = node.querySelectorAll( 'BR' );
+    var brBreaksLine = [];
+    var l = brs.length;
+    var i, br, parent;
 
     // Must calculate whether the <br> breaks a line first, because if we
     // have two <br>s next to each other, after the first one is converted
@@ -335,7 +338,7 @@ var cleanupBRs = function ( node, root ) {
     // therefore seem to not be a line break. But in its original context it
     // was, so we should also convert it to a block split.
     for ( i = 0; i < l; i += 1 ) {
-        brBreaksLine[i] = isLineBreak( brs[i] );
+        brBreaksLine[i] = isLineBreak( brs[i], keepForBlankLine );
     }
     while ( l-- ) {
         br = brs[l];

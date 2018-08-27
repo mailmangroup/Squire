@@ -1,6 +1,6 @@
 /*jshint strict:false, undef:false, unused:false */
 
-var inlineNodeNames  = /^(?:#text|A(?:BBR|CRONYM)?|B(?:R|D[IO])?|C(?:ITE|ODE)|D(?:ATA|EL|FN)|EM|FONT|HR|I(?:FRAME|MG|NPUT|NS)?|KBD|Q|R(?:P|T|UBY)|S(?:AMP|MALL|PAN|TR(?:IKE|ONG)|U[BP])?|U|VAR|WBR)$/;
+var inlineNodeNames  = /^(?:#text|A(?:BBR|CRONYM)?|B(?:R|D[IO])?|C(?:ITE|ODE)|D(?:ATA|EL|FN)|EM|FONT|HR|I(?:FRAME|MG|NPUT|NS)?|KBD|Q|R(?:P|T|UBY)|S(?:AMP|MALL|PAN|TR(?:IKE|ONG)|U[BP])?|TIME|U|VAR|WBR)$/;
 
 var leafNodeNames = {
     BR: 1,
@@ -22,22 +22,53 @@ function every ( nodeList, fn ) {
 
 // ---
 
+var UNKNOWN = 0;
+var INLINE = 1;
+var BLOCK = 2;
+var CONTAINER = 3;
+
+var nodeCategoryCache = canWeakMap ? new WeakMap() : null;
+
 function isLeaf ( node ) {
-    return node.nodeType === ELEMENT_NODE &&
-        !!leafNodeNames[ node.nodeName ];
+    return node.nodeType === ELEMENT_NODE && !!leafNodeNames[ node.nodeName ];
+}
+function getNodeCategory ( node ) {
+    switch ( node.nodeType ) {
+    case TEXT_NODE:
+        return INLINE;
+    case ELEMENT_NODE:
+    case DOCUMENT_FRAGMENT_NODE:
+        if ( canWeakMap && nodeCategoryCache.has( node ) ) {
+            return nodeCategoryCache.get( node );
+        }
+        break;
+    default:
+        return UNKNOWN;
+    }
+
+    var nodeCategory;
+    if ( !every( node.childNodes, isInline ) ) {
+        // Malformed HTML can have block tags inside inline tags. Need to treat
+        // these as containers rather than inline. See #239.
+        nodeCategory = CONTAINER;
+    } else if ( inlineNodeNames.test( node.nodeName ) ) {
+        nodeCategory = INLINE;
+    } else {
+        nodeCategory = BLOCK;
+    }
+    if ( canWeakMap ) {
+        nodeCategoryCache.set( node, nodeCategory );
+    }
+    return nodeCategory;
 }
 function isInline ( node ) {
-    return inlineNodeNames.test( node.nodeName );
+    return getNodeCategory( node ) === INLINE;
 }
 function isBlock ( node ) {
-    var type = node.nodeType;
-    return ( type === ELEMENT_NODE || type === DOCUMENT_FRAGMENT_NODE ) &&
-        !isInline( node ) && every( node.childNodes, isInline );
+    return getNodeCategory( node ) === BLOCK;
 }
 function isContainer ( node ) {
-    var type = node.nodeType;
-    return ( type === ELEMENT_NODE || type === DOCUMENT_FRAGMENT_NODE ) &&
-        !isInline( node ) && !isBlock( node );
+    return getNodeCategory( node ) === CONTAINER;
 }
 
 function getBlockWalker ( node, root ) {
@@ -52,6 +83,10 @@ function getPreviousBlock ( node, root ) {
 function getNextBlock ( node, root ) {
     node = getBlockWalker( node, root ).nextNode();
     return node !== root ? node : null;
+}
+
+function isEmptyBlock ( block ) {
+    return !block.textContent && !block.querySelector( 'IMG' );
 }
 
 function areAlike ( node, node2 ) {
@@ -94,11 +129,11 @@ function isOrContains ( parent, node ) {
     return false;
 }
 
-function getPath ( node, root ) {
+function getPath ( node, root, config ) {
     var path = '';
-    var id, className, classNames, dir;
+    var id, className, classNames, dir, styleNames;
     if ( node && node !== root ) {
-        path = getPath( node.parentNode, root );
+        path = getPath( node.parentNode, root, config );
         if ( node.nodeType === ELEMENT_NODE ) {
             path += ( path ? '>' : '' ) + node.nodeName;
             if ( id = node.id ) {
@@ -113,6 +148,24 @@ function getPath ( node, root ) {
             if ( dir = node.dir ) {
                 path += '[dir=' + dir + ']';
             }
+            if ( classNames ) {
+                styleNames = config.classNames;
+                if ( indexOf.call( classNames, styleNames.highlight ) > -1 ) {
+                    path += '[backgroundColor=' +
+                        node.style.backgroundColor.replace( / /g,'' ) + ']';
+                }
+                if ( indexOf.call( classNames, styleNames.colour ) > -1 ) {
+                    path += '[color=' +
+                        node.style.color.replace( / /g,'' ) + ']';
+                }
+                if ( indexOf.call( classNames, styleNames.fontFamily ) > -1 ) {
+                    path += '[fontFamily=' +
+                        node.style.fontFamily.replace( / /g,'' ) + ']';
+                }
+                if ( indexOf.call( classNames, styleNames.fontSize ) > -1 ) {
+                    path += '[fontSize=' + node.style.fontSize + ']';
+                }
+            }
         }
     }
     return path;
@@ -120,7 +173,7 @@ function getPath ( node, root ) {
 
 function getLength ( node ) {
     var nodeType = node.nodeType;
-    return nodeType === ELEMENT_NODE ?
+    return nodeType === ELEMENT_NODE || nodeType === DOCUMENT_FRAGMENT_NODE ?
         node.childNodes.length : node.length || 0;
 }
 
@@ -175,13 +228,14 @@ function fixCursor ( node, root ) {
     // unfocussable if they have no content. To remedy this, a <BR> must be
     // inserted. In Opera and IE, we just need a textnode in order for the
     // cursor to appear.
-    var doc = node.ownerDocument,
-        originalNode = node,
-        fixer, child;
+    var self = root.__squire__;
+    var doc = node.ownerDocument;
+    var originalNode = node;
+    var fixer, child;
 
     if ( node === root ) {
         if ( !( child = node.firstChild ) || child.nodeName === 'BR' ) {
-            fixer = getSquireInstance( doc ).createDefaultBlock();
+            fixer = self.createDefaultBlock();
             if ( child ) {
                 node.replaceChild( fixer, child );
             }
@@ -207,7 +261,7 @@ function fixCursor ( node, root ) {
         if ( !child ) {
             if ( cantFocusEmptyTextNodes ) {
                 fixer = doc.createTextNode( ZWS );
-                getSquireInstance( doc )._didAddZWS();
+                self._didAddZWS();
             } else {
                 fixer = doc.createTextNode( '' );
             }
@@ -243,7 +297,7 @@ function fixCursor ( node, root ) {
         try {
             node.appendChild( fixer );
         } catch ( error ) {
-            getSquireInstance( doc ).didError({
+            self.didError({
                 name: 'Squire: fixCursor – ' + error,
                 message: 'Parent: ' + node.nodeName + '/' + node.innerHTML +
                     ' appendChild: ' + fixer.nodeName
@@ -256,11 +310,11 @@ function fixCursor ( node, root ) {
 
 // Recursively examine container nodes and wrap any inline children.
 function fixContainer ( container, root ) {
-    var children = container.childNodes,
-        doc = container.ownerDocument,
-        wrapper = null,
-        i, l, child, isBR,
-        config = getSquireInstance( doc )._config;
+    var children = container.childNodes;
+    var doc = container.ownerDocument;
+    var wrapper = null;
+    var i, l, child, isBR;
+    var config = root.__squire__._config;
 
     for ( i = 0, l = children.length; i < l; i += 1 ) {
         child = children[i];
@@ -351,10 +405,7 @@ function split ( node, offset, stopNode, root ) {
     return offset;
 }
 
-function mergeInlines ( node, range ) {
-    if ( node.nodeType !== ELEMENT_NODE ) {
-        return;
-    }
+function _mergeInlines ( node, fakeRange ) {
     var children = node.childNodes,
         l = children.length,
         frags = [],
@@ -364,30 +415,30 @@ function mergeInlines ( node, range ) {
         prev = l && children[ l - 1 ];
         if ( l && isInline( child ) && areAlike( child, prev ) &&
                 !leafNodeNames[ child.nodeName ] ) {
-            if ( range.startContainer === child ) {
-                range.startContainer = prev;
-                range.startOffset += getLength( prev );
+            if ( fakeRange.startContainer === child ) {
+                fakeRange.startContainer = prev;
+                fakeRange.startOffset += getLength( prev );
             }
-            if ( range.endContainer === child ) {
-                range.endContainer = prev;
-                range.endOffset += getLength( prev );
+            if ( fakeRange.endContainer === child ) {
+                fakeRange.endContainer = prev;
+                fakeRange.endOffset += getLength( prev );
             }
-            if ( range.startContainer === node ) {
-                if ( range.startOffset > l ) {
-                    range.startOffset -= 1;
+            if ( fakeRange.startContainer === node ) {
+                if ( fakeRange.startOffset > l ) {
+                    fakeRange.startOffset -= 1;
                 }
-                else if ( range.startOffset === l ) {
-                    range.startContainer = prev;
-                    range.startOffset = getLength( prev );
+                else if ( fakeRange.startOffset === l ) {
+                    fakeRange.startContainer = prev;
+                    fakeRange.startOffset = getLength( prev );
                 }
             }
-            if ( range.endContainer === node ) {
-                if ( range.endOffset > l ) {
-                    range.endOffset -= 1;
+            if ( fakeRange.endContainer === node ) {
+                if ( fakeRange.endOffset > l ) {
+                    fakeRange.endOffset -= 1;
                 }
-                else if ( range.endOffset === l ) {
-                    range.endContainer = prev;
-                    range.endOffset = getLength( prev );
+                else if ( fakeRange.endOffset === l ) {
+                    fakeRange.endContainer = prev;
+                    fakeRange.endOffset = getLength( prev );
                 }
             }
             detach( child );
@@ -403,16 +454,36 @@ function mergeInlines ( node, range ) {
             while ( len-- ) {
                 child.appendChild( frags.pop() );
             }
-            mergeInlines( child, range );
+            _mergeInlines( child, fakeRange );
         }
     }
 }
 
-function mergeWithBlock ( block, next, range ) {
-    var container = next,
-        last, offset, _range;
-    while ( container.parentNode.childNodes.length === 1 ) {
-        container = container.parentNode;
+function mergeInlines ( node, range ) {
+    if ( node.nodeType === TEXT_NODE ) {
+        node = node.parentNode;
+    }
+    if ( node.nodeType === ELEMENT_NODE ) {
+        var fakeRange = {
+            startContainer: range.startContainer,
+            startOffset: range.startOffset,
+            endContainer: range.endContainer,
+            endOffset: range.endOffset
+        };
+        _mergeInlines( node, fakeRange );
+        range.setStart( fakeRange.startContainer, fakeRange.startOffset );
+        range.setEnd( fakeRange.endContainer, fakeRange.endOffset );
+    }
+}
+
+function mergeWithBlock ( block, next, range, root ) {
+    var container = next;
+    var parent, last, offset;
+    while ( ( parent = container.parentNode ) &&
+            parent !== root &&
+            parent.nodeType === ELEMENT_NODE &&
+            parent.childNodes.length === 1 ) {
+        container = parent;
     }
     detach( container );
 
@@ -425,18 +496,11 @@ function mergeWithBlock ( block, next, range ) {
         offset -= 1;
     }
 
-    _range = {
-        startContainer: block,
-        startOffset: offset,
-        endContainer: block,
-        endOffset: offset
-    };
-
     block.appendChild( empty( next ) );
-    mergeInlines( block, _range );
 
-    range.setStart( _range.startContainer, _range.startOffset );
+    range.setStart( block, offset );
     range.collapse( true );
+    mergeInlines( block, range );
 
     // Opera inserts a BR if you delete the last piece of text
     // in a block-level element. Unfortunately, it then gets

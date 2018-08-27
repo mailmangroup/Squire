@@ -26,6 +26,7 @@ describe('Squire RTE', function () {
     });
 
     function selectAll(editor) {
+        doc.getSelection().removeAllRanges()
         var range = doc.createRange();
         range.setStart(doc.body.childNodes.item(0), 0);
         range.setEnd(doc.body.childNodes.item(0), doc.body.childNodes.item(0).childNodes.length);
@@ -192,6 +193,232 @@ describe('Squire RTE', function () {
                 '<div>two</div>' +
                 '<div>three</div>' +
                 '<table><tbody><tr><td>four</td><td>five</td></tr></tbody></table>');
+        });
+    });
+
+    describe('getPath', function () {
+        var startHTML;
+        beforeEach( function () {
+            startHTML = '<div>one <b>two three</b> four <i>five</i></div>';
+            editor.setHTML(startHTML);
+
+            var range = doc.createRange();
+            range.setStart(doc.body.childNodes.item(0), 0);
+            range.setEnd(doc.body.childNodes.item(0), 1);
+            editor.setSelection(range);
+        });
+
+        it('returns the path to the selection', function () {
+            var range = doc.createRange();
+            range.setStart(doc.body.childNodes.item(0).childNodes.item(1), 0);
+            range.setEnd(doc.body.childNodes.item(0).childNodes.item(1), 0);
+            editor.setSelection(range);
+
+            //Manually tell it to update the path
+            editor._updatePath(range);
+            expect(editor.getPath(), 'to be', 'DIV>B');
+        });
+
+        it('includes id in the path', function () {
+            editor.insertHTML('<div id="spanId">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV#spanId');
+        });
+
+        it('includes class name in the path', function () {
+            editor.insertHTML('<div class="myClass">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.myClass');
+        });
+
+        it('includes all class names in the path', function () {
+            editor.insertHTML('<div class="myClass myClass2 myClass3">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.myClass.myClass2.myClass3');
+        });
+
+        it('includes direction in the path', function () {
+            editor.insertHTML('<div dir="rtl">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV[dir=rtl]');
+        });
+
+        it('includes highlight value in the path', function () {
+            editor.insertHTML('<div class="highlight" style="background-color: rgb(255, 0, 0)">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.highlight[backgroundColor=rgb(255,0,0)]');
+        });
+
+        it('includes color value in the path', function () {
+            editor.insertHTML('<div class="colour" style="color: rgb(255, 0, 0)">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.colour[color=rgb(255,0,0)]');
+        });
+
+        it('includes font family value in the path', function () {
+            editor.insertHTML('<div class="font" style="font-family: Arial, sans-serif">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.font[fontFamily=Arial,sans-serif]');
+        });
+
+        it('includes font size value in the path', function () {
+            editor.insertHTML('<div class="size" style="font-size: 12pt">Text</div>');
+            expect(editor.getPath(), 'to be', 'DIV.size[fontSize=12pt]');
+        });
+
+        it('is (selection) when the selection is a range', function() {
+            var range = doc.createRange();
+            range.setStart(doc.body.childNodes.item(0).childNodes.item(0), 0);
+            range.setEnd(doc.body.childNodes.item(0).childNodes.item(3), 0);
+            editor.setSelection(range);
+
+            //Manually tell it to update the path
+            editor._updatePath(range);
+
+            expect(editor.getPath(), 'to be', '(selection)');
+        });
+    });
+
+    describe('multi-level lists', function () {
+      it('increases list indentation', function() {
+        var startHTML = '<ul><li><div>a</div></li><li><div>b</div></li><li><div>c</div></li></ul>';
+        editor.setHTML(startHTML);
+        expect(editor, 'to contain HTML', startHTML);
+
+        var range = doc.createRange();
+        var textNode = doc.getElementsByTagName('li').item(1).childNodes[0].childNodes[0]
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 0);
+        editor.setSelection(range);
+
+        editor.increaseListLevel()
+        expect(editor, 'to contain HTML', '<ul><li><div>a</div></li><ul><li><div>b</div></li></ul><li><div>c</div></li></ul>');
+      });
+
+      it('increases list indentation 2', function() {
+        var startHTML = '<ul><li><div>a</div></li><li><div>b</div></li><li><div>c</div></li></ul>';
+        editor.setHTML(startHTML);
+        expect(editor, 'to contain HTML', startHTML);
+
+        var range = doc.createRange();
+        var textNode = doc.getElementsByTagName('li').item(1).childNodes[0].childNodes[0]
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 0);
+        editor.setSelection(range);
+
+        editor.increaseListLevel()
+        editor.increaseListLevel()
+        expect(editor, 'to contain HTML', '<ul><li><div>a</div></li><ul><ul><li><div>b</div></li></ul></ul><li><div>c</div></li></ul>');
+      });
+
+      it('decreases list indentation', function() {
+        var startHTML = '<ul><li><div>a</div></li><ul><li><div>b</div></li></ul><li><div>c</div></li></ul>';
+        editor.setHTML(startHTML);
+        expect(editor, 'to contain HTML', startHTML);
+
+        var range = doc.createRange();
+        var textNode = doc.getElementsByTagName('li').item(1).childNodes[0].childNodes[0]
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 0);
+        editor.setSelection(range);
+
+        editor.decreaseListLevel()
+        expect(editor, 'to contain HTML', '<ul><li><div>a</div></li><li><div>b</div></li><li><div>c</div></li></ul>');
+      });
+
+      it('decreases list indentation 2', function() {
+        var startHTML = '<ul><li><div>a</div></li><ul><ul><li><div>b</div></li></ul></ul><li><div>c</div></li></ul>';
+        editor.setHTML(startHTML);
+        expect(editor, 'to contain HTML', startHTML);
+
+        var range = doc.createRange();
+        var textNode = doc.getElementsByTagName('li').item(1).childNodes[0].childNodes[0]
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 0);
+        editor.setSelection(range);
+
+        editor.decreaseListLevel()
+        editor.decreaseListLevel()
+        expect(editor, 'to contain HTML', '<ul><li><div>a</div></li><li><div>b</div></li><li><div>c</div></li></ul>');
+      });
+
+      it('removes lists', function() {
+        var startHTML = '<ul><li><div>foo</div></li><ul><li><div>bar</div></li></ul></ul>';
+        editor.setHTML(startHTML);
+        expect(editor, 'to contain HTML', startHTML);
+
+        var range = doc.createRange();
+        var textNode = doc.getElementsByTagName('li').item(1).childNodes[0].childNodes[0]
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 0);
+        editor.setSelection(range);
+
+        editor.removeList()
+        expect(editor, 'to contain HTML', '<ul><li><div>foo</div></li></ul><div>bar</div>');
+      })
+    });
+
+    describe('insertHTML', function() {
+        it('fix CF_HTML incomplete table', function() {
+            editor.insertHTML('<table><tbody><tr><!--StartFragment--><td>text</td><!--EndFragment--></tr></tbody></table>');
+            expect(editor.getHTML(), 'to contain', '<table><tbody><tr><td>text<br></td></tr></tbody></table>');
+
+            editor.setHTML('');
+
+            editor.insertHTML('<table><tbody><!--StartFragment--><tr><td>text1</td><td>text2</td></tr><!--EndFragment--></tbody></table>');
+            expect(editor.getHTML(), 'to contain', '<table><tbody><tr><td>text1<br></td><td>text2<br></td></tr></tbody></table>');
+        });
+
+        var LINK_MAP = {
+            "dewdw@fre.fr": "mailto:dewdw@fre.fr",
+            "dew@free.fr?dew=dew": "mailto:dew@free.fr?dew=dew",
+            "dew@free.fr?subject=dew": "mailto:dew@free.fr?subject=dew",
+            "test@example.com?subject=foo&body=bar": "mailto:test@example.com?subject=foo&body=bar",
+            "dew@fre.fr dewdwe @dew": "mailto:dew@fre.fr",
+            "http://free.fr": "http://free.fr",
+            "http://google.com": "http://google.com",
+            "https://google.com": "https://google.com",
+            "https://www.google.com": "https://www.google.com",
+            "https://www.google.com/": "https://www.google.com/",
+            "https://google.com/?": "https://google.com/",
+            "https://google.com?": "https://google.com",
+            "https://google.com?a": "https://google.com/?a",
+            "https://google.com?a=": "https://google.com/?a=",
+            "https://google.com?a=b": "https://google.com/?a=b",
+            "https://google.com?a=b?": "https://google.com/?a=b",
+            "https://google.com?a=b&": "https://google.com/?a=b&",
+            "https://google.com?a=b&c": "https://google.com/?a=b&c",
+            "https://google.com?a=b&c=": "https://google.com/?a=b&c=",
+            "https://google.com?a=b&c=d": "https://google.com/?a=b&c=",
+            "https://google.com?a=b&c=d?": "https://google.com/?a=b&c=d",
+            "https://google.com?a=b&c=d&": "https://google.com/?a=b&c=d&",
+            "https://google.com?a=b&c=d&e=": "https://google.com/?a=b&c=d&e=",
+            "https://google.com?a=b&c=d&e=f": "https://google.com/?a=b&c=d&e=f"
+        };
+
+        Object.keys(LINK_MAP).forEach((input) => {
+            it('should auto convert links to anchor: ' + input, function() {
+                editor.insertHTML(input);
+                var link = editor.getDocument().querySelector('a');
+                expect(link.href, 'to contain', LINK_MAP[input]);
+                editor.setHTML('');
+            });
+        });
+
+        it('should auto convert a part of the link to an anchor', function() {
+            editor.insertHTML(`
+                dew@fre.fr dewdwe @dew
+            `);
+            var link = editor.getDocument().querySelector('a');
+            expect(link.textContent, 'to be', 'dew@fre.fr');
+            expect(link.href, 'to be', 'mailto:dew@fre.fr');
+            editor.setHTML('');
+        });
+
+        it('should not auto convert non links to anchor', function() {
+            editor.insertHTML(`
+                dewdwe @dew
+                deww.de
+                monique.fre
+
+                google.com
+            `);
+            var link = editor.getDocument().querySelector('a');
+            expect(link, 'to be', null);
+            editor.setHTML('');
         });
     });
 
