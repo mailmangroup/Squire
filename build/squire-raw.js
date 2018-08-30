@@ -4105,6 +4105,46 @@ proto.decreaseListLevel = function ( range ) {
     return this.focus();
 };
 
+proto.setSideMargins = function ( size, range ) {
+
+    if ( !range && !( range = this.getSelection() ) ) {
+        return this.focus();
+    }
+
+    var root = this._root;
+
+    // Save undo checkpoint and bookmark selection
+    this._recordUndoState( range, this._isInUndoState );
+
+    // 1. Expand range to block boundaries
+    expandRangeToBlockBoundaries( range, root );
+
+    // 2. Remove range.
+    moveRangeBoundariesUpTree( range, root, root, root );
+    var frag = extractContentsOfRange( range, root, root );
+
+    // 3. Set margin left & right
+    Array.prototype.forEach.call( frag.children, function( node ) {
+        node.style.marginLeft = size + 'px';
+        node.style.marginRight = size + 'px';
+    });
+
+    // 4. Modify tree of fragment and reinsert.
+    insertNodeInRange( range, frag );
+
+    // Restore selection
+    this._getRangeAndRemoveBookmark( range );
+    this.setSelection( range );
+    this._updatePath( range, true );
+
+    // We're not still in an undo state
+    if ( !canObserveMutations ) {
+        this._docWasChanged();
+    }
+
+    return this.focus();
+};
+
 proto._ensureBottomLine = function () {
     var root = this._root;
     var last = root.lastElementChild;
