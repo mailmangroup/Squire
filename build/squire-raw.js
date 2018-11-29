@@ -1803,15 +1803,6 @@ var fontSizes = {
 };
 
 var styleToSemantic = {
-    backgroundColor: {
-        regexp: notWS,
-        replace: function ( doc, classNames, colour ) {
-            return createElement( doc, 'SPAN', {
-                'class': classNames.highlight,
-                style: 'background-color:' + colour
-            });
-        }
-    },
     color: {
         regexp: notWS,
         replace: function ( doc, classNames, colour ) {
