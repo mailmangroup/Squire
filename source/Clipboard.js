@@ -3,26 +3,35 @@
 // The (non-standard but supported enough) innerText property is based on the
 // render tree in Firefox and possibly other browsers, so we must insert the
 // DOM node into the document to ensure the text part is correct.
-var setClipboardData = function ( clipboardData, node, root, config ) {
-    var body = node.ownerDocument.body;
-    var willCutCopy = config.willCutCopy;
+var setClipboardData =
+        function ( event, contents, root, willCutCopy, toPlainText, plainTextOnly ) {
+    var clipboardData = event.clipboardData;
+    var doc = event.target.ownerDocument;
+    var body = doc.body;
+    var node = createElement( doc, 'div' );
     var html, text;
 
-    // Firefox will add an extra new line for BRs at the end of block when
-    // calculating innerText, even though they don't actually affect display.
-    // So we need to remove them first.
-    cleanupBRs( node, root, true );
+    node.appendChild( contents );
 
-    node.setAttribute( 'style',
-        'position:fixed;overflow:hidden;bottom:100%;right:100%;' );
-    body.appendChild( node );
     html = node.innerHTML;
-    text = node.innerText || node.textContent;
-
     if ( willCutCopy ) {
         html = willCutCopy( html );
     }
 
+    if ( toPlainText ) {
+        text = toPlainText( html );
+    } else {
+        // Firefox will add an extra new line for BRs at the end of block when
+        // calculating innerText, even though they don't actually affect
+        // display, so we need to remove them first.
+        cleanupBRs( node, root, true );
+        node.setAttribute( 'style',
+            'position:fixed;overflow:hidden;bottom:100%;right:100%;' );
+        body.appendChild( node );
+        text = node.innerText || node.textContent;
+        text = text.replace( / /g, ' ' ); // Replace nbsp with regular space
+        body.removeChild( node );
+    }
     // Firefox (and others?) returns unix line endings (\n) even on Windows.
     // If on Windows, normalise to \r\n, since Notepad and some other crappy
     // apps do not understand just \n.
@@ -30,18 +39,18 @@ var setClipboardData = function ( clipboardData, node, root, config ) {
         text = text.replace( /\r?\n/g, '\r\n' );
     }
 
-    clipboardData.setData( 'text/html', html );
+    if ( !plainTextOnly ) {
+        clipboardData.setData( 'text/html', html );
+    }
     clipboardData.setData( 'text/plain', text );
-
-    body.removeChild( node );
+    event.preventDefault();
 };
 
 var onCut = function ( event ) {
-    var clipboardData = event.clipboardData;
     var range = this.getSelection();
     var root = this._root;
     var self = this;
-    var startBlock, endBlock, copyRoot, contents, parent, newContents, node;
+    var startBlock, endBlock, copyRoot, contents, parent, newContents;
 
     // Nothing to do
     if ( range.collapsed ) {
@@ -53,9 +62,7 @@ var onCut = function ( event ) {
     this.saveUndoState( range );
 
     // Edge only seems to support setting plain text as of 2016-03-11.
-    // Mobile Safari flat out doesn't work:
-    // https://bugs.webkit.org/show_bug.cgi?id=143776
-    if ( !isEdge && !isIOS && clipboardData ) {
+    if ( !isEdge && event.clipboardData ) {
         // Clipboard content should include all parents within block, or all
         // parents up to root if selection across blocks
         startBlock = getStartBlockOfRange( range, root );
@@ -75,10 +82,8 @@ var onCut = function ( event ) {
             parent = parent.parentNode;
         }
         // Set clipboard data
-        node = this.createElement( 'div' );
-        node.appendChild( contents );
-        setClipboardData( clipboardData, node, root, this._config );
-        event.preventDefault();
+        setClipboardData(
+            event, contents, root, this._config.willCutCopy, null, false );
     } else {
         setTimeout( function () {
             try {
@@ -93,16 +98,10 @@ var onCut = function ( event ) {
     this.setSelection( range );
 };
 
-var onCopy = function ( event ) {
-    var clipboardData = event.clipboardData;
-    var range = this.getSelection();
-    var root = this._root;
-    var startBlock, endBlock, copyRoot, contents, parent, newContents, node;
-
+var _onCopy = function ( event, range, root, willCutCopy, toPlainText, plainTextOnly ) {
+    var startBlock, endBlock, copyRoot, contents, parent, newContents;
     // Edge only seems to support setting plain text as of 2016-03-11.
-    // Mobile Safari flat out doesn't work:
-    // https://bugs.webkit.org/show_bug.cgi?id=143776
-    if ( !isEdge && !isIOS && clipboardData ) {
+    if ( !isEdge && event.clipboardData ) {
         // Clipboard content should include all parents within block, or all
         // parents up to root if selection across blocks
         startBlock = getStartBlockOfRange( range, root );
@@ -127,11 +126,19 @@ var onCopy = function ( event ) {
             parent = parent.parentNode;
         }
         // Set clipboard data
-        node = this.createElement( 'div' );
-        node.appendChild( contents );
-        setClipboardData( clipboardData, node, root, this._config );
-        event.preventDefault();
+        setClipboardData( event, contents, root, willCutCopy, toPlainText, plainTextOnly );
     }
+};
+
+var onCopy = function ( event ) {
+    _onCopy(
+        event,
+        this.getSelection(),
+        this._root,
+        this._config.willCutCopy,
+        null,
+        false
+    );
 };
 
 // Need to monitor for shift key like this, as event.shiftKey is not available
@@ -145,52 +152,46 @@ var onPaste = function ( event ) {
     var items = clipboardData && clipboardData.items;
     var choosePlain = this.isShiftDown;
     var fireDrop = false;
+    var hasRTF = false;
     var hasImage = false;
     var plainItem = null;
+    var htmlItem = null;
     var self = this;
     var l, item, type, types, data;
 
     // Current HTML5 Clipboard interface
     // ---------------------------------
     // https://html.spec.whatwg.org/multipage/interaction.html
-
-    // Edge only provides access to plain text as of 2016-03-11 and gives no
-    // indication there should be an HTML part. However, it does support access
-    // to image data, so check if this is present and use if so.
-    if ( isEdge && items ) {
-        l = items.length;
-        while ( l-- ) {
-            if ( !choosePlain && /^image\/.*/.test( items[l].type ) ) {
-                hasImage = true;
-            }
-        }
-        if ( !hasImage ) {
-            items = null;
-        }
-    }
     if ( items ) {
-        event.preventDefault();
         l = items.length;
         while ( l-- ) {
             item = items[l];
             type = item.type;
-            if ( !choosePlain && type === 'text/html' ) {
-                /*jshint loopfunc: true */
-                item.getAsString( function ( html ) {
-                    self.insertHTML( html, true );
-                });
-                /*jshint loopfunc: false */
-                return;
-            }
-            if ( type === 'text/plain' ) {
+            if ( type === 'text/html' ) {
+                htmlItem = item;
+            // iOS copy URL gives you type text/uri-list which is just a list
+            // of 1 or more URLs separated by new lines. Can just treat as
+            // plain text.
+            } else if ( type === 'text/plain' || type === 'text/uri-list' ) {
                 plainItem = item;
-            }
-            if ( !choosePlain && /^image\/.*/.test( type ) ) {
+            } else if ( type === 'text/rtf' ) {
+                hasRTF = true;
+            } else if ( /^image\/.*/.test( type ) ) {
                 hasImage = true;
             }
         }
-        // Treat image paste as a drop of an image file.
-        if ( hasImage ) {
+
+        // Treat image paste as a drop of an image file. When you copy
+        // an image in Chrome/Firefox (at least), it copies the image data
+        // but also an HTML version (referencing the original URL of the image)
+        // and a plain text version.
+        //
+        // However, when you copy in Excel, you get html, rtf, text, image;
+        // in this instance you want the html version! So let's try using
+        // the presence of text/rtf as an indicator to choose the html version
+        // over the image.
+        if ( hasImage && !( hasRTF && htmlItem ) ) {
+            event.preventDefault();
             this.fireEvent( 'dragover', {
                 dataTransfer: clipboardData,
                 /*jshint loopfunc: true */
@@ -204,12 +205,26 @@ var onPaste = function ( event ) {
                     dataTransfer: clipboardData
                 });
             }
-        } else if ( plainItem ) {
-            plainItem.getAsString( function ( text ) {
-                self.insertPlainText( text, true );
-            });
+            return;
         }
-        return;
+
+        // Edge only provides access to plain text as of 2016-03-11 and gives no
+        // indication there should be an HTML part. However, it does support
+        // access to image data, so we check for that first. Otherwise though,
+        // fall through to fallback clipboard handling methods
+        if ( !isEdge ) {
+            event.preventDefault();
+            if ( htmlItem && ( !choosePlain || !plainItem ) ) {
+                htmlItem.getAsString( function ( html ) {
+                    self.insertHTML( html, true );
+                });
+            } else if ( plainItem ) {
+                plainItem.getAsString( function ( text ) {
+                    self.insertPlainText( text, true );
+                });
+            }
+            return;
+        }
     }
 
     // Old interface

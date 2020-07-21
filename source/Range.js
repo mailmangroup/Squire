@@ -97,7 +97,7 @@ var extractContentsOfRange = function ( range, common, root ) {
     var endNode = split( endContainer, endOffset, common, root ),
         startNode = split( startContainer, startOffset, common, root ),
         frag = common.ownerDocument.createDocumentFragment(),
-        next, before, after;
+        next, before, after, beforeText, afterText;
 
     // End node will be null if at end of child nodes list.
     while ( startNode !== endNode ) {
@@ -120,7 +120,17 @@ var extractContentsOfRange = function ( range, common, root ) {
             after.nodeType === TEXT_NODE ) {
         startContainer = before;
         startOffset = before.length;
-        before.appendData( after.data );
+        beforeText = before.data;
+        afterText = after.data;
+
+        // If we now have two adjacent spaces, the second one needs to become
+        // a nbsp, otherwise the browser will swallow it due to HTML whitespace
+        // collapsing.
+        if ( beforeText.charAt( beforeText.length - 1 ) === ' ' &&
+                afterText.charAt( 0 ) === ' ' ) {
+            afterText = ' ' + afterText.slice( 1 ); // nbsp
+        }
+        before.appendData( afterText );
         detach( after );
     }
 
@@ -179,6 +189,7 @@ var deleteContentsOfRange = function ( range, root ) {
 // Contents of range will be deleted.
 // After method, range will be around inserted content
 var insertTreeFragmentIntoRange = function ( range, frag, root ) {
+    var firstInFragIsInline = frag.firstChild && isInline( frag.firstChild );
     var node, block, blockContentsAfterSplit, stopPoint, container, offset;
     var replaceBlock, firstBlockInFrag, nodeAfterSplit, nodeBeforeSplit;
     var tempRange;
@@ -204,11 +215,17 @@ var insertTreeFragmentIntoRange = function ( range, frag, root ) {
 
     // Merge the contents of the first block in the frag with the focused block.
     // If there are contents in the block after the focus point, collect this
-    // up to insert in the last block later. If the block is empty, replace
-    // it instead of merging.
+    // up to insert in the last block later. This preserves the style that was
+    // present in this bit of the page.
+    //
+    // If the block being inserted into is empty though, replace it instead of
+    // merging if the fragment had block contents.
+    // e.g. <blockquote><p>Foo</p></blockquote>
+    // This seems a reasonable approximation of user intent.
+
     block = getStartBlockOfRange( range, root );
     firstBlockInFrag = getNextBlock( frag, frag );
-    replaceBlock = !!block && isEmptyBlock( block );
+    replaceBlock = !firstInFragIsInline && !!block && isEmptyBlock( block );
     if ( block && firstBlockInFrag && !replaceBlock &&
             // Don't merge table cells or PRE elements into block
             !getNearest( firstBlockInFrag, frag, 'PRE' ) &&
@@ -394,6 +411,9 @@ var moveRangeBoundariesUpTree = function ( range, startMax, endMax, root ) {
     }
 
     while ( true ) {
+        if ( endContainer === endMax || endContainer === root ) {
+            break;
+        }
         if ( maySkipBR &&
                 endContainer.nodeType !== TEXT_NODE &&
                 endContainer.childNodes[ endOffset ] &&
@@ -401,9 +421,7 @@ var moveRangeBoundariesUpTree = function ( range, startMax, endMax, root ) {
             endOffset += 1;
             maySkipBR = false;
         }
-        if ( endContainer === endMax ||
-                endContainer === root ||
-                endOffset !== getLength( endContainer ) ) {
+        if ( endOffset !== getLength( endContainer ) ) {
             break;
         }
         parent = endContainer.parentNode;
@@ -413,6 +431,20 @@ var moveRangeBoundariesUpTree = function ( range, startMax, endMax, root ) {
 
     range.setStart( startContainer, startOffset );
     range.setEnd( endContainer, endOffset );
+};
+
+var moveRangeBoundaryOutOf = function ( range, nodeName, root ) {
+    var parent = getNearest( range.endContainer, root, 'A' );
+    if ( parent ) {
+        var clone = range.cloneRange();
+        parent = parent.parentNode;
+        moveRangeBoundariesUpTree( clone, parent, parent, root );
+        if ( clone.endContainer === parent ) {
+            range.setStart( clone.endContainer, clone.endOffset );
+            range.setEnd( clone.endContainer, clone.endOffset );
+        }
+    }
+    return range;
 };
 
 // Returns the first block at least partially contained by the range,

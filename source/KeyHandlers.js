@@ -33,12 +33,6 @@ var onKey = function ( event ) {
         }
     }
 
-    // On keypress, delete and '.' both have event.keyCode 46
-    // Must check event.which to differentiate.
-    if ( isPresto && event.which === 46 ) {
-        key = '.';
-    }
-
     // Function keys
     if ( 111 < code && code < 124 ) {
         key = 'f' + ( code - 111 );
@@ -50,16 +44,21 @@ var onKey = function ( event ) {
         if ( event.altKey  ) { modifiers += 'alt-'; }
         if ( event.ctrlKey ) { modifiers += 'ctrl-'; }
         if ( event.metaKey ) { modifiers += 'meta-'; }
+        if ( event.shiftKey ) { modifiers += 'shift-'; }
     }
     // However, on Windows, shift-delete is apparently "cut" (WTF right?), so
-    // we want to let the browser handle shift-delete.
-    if ( event.shiftKey ) { modifiers += 'shift-'; }
+    // we want to let the browser handle shift-delete in this situation.
+    if ( isWin && event.shiftKey && key === 'delete' ) {
+        modifiers += 'shift-';
+    }
 
     key = modifiers + key;
 
     if ( this._keyHandlers[ key ] ) {
         this._keyHandlers[ key ]( this, event, range );
-    } else if ( !range.collapsed && !event.ctrlKey && !event.metaKey &&
+    // !event.isComposing stops us from blatting Kana-Kanji conversion in Safari
+    } else if ( !range.collapsed && !event.isComposing &&
+            !event.ctrlKey && !event.metaKey &&
             ( event.key || key ).length === 1 ) {
         // Record undo checkpoint.
         this.saveUndoState( range );
@@ -143,13 +142,20 @@ var afterDelete = function ( self, range ) {
     }
 };
 
-var keyHandlers = {
-    enter: function ( self, event, range ) {
-        var root = self._root;
-        var block, parent, nodeAfterSplit;
+var detachUneditableNode = function ( node, root ) {
+    var parent;
+    while (( parent = node.parentNode )) {
+        if ( parent === root || parent.isContentEditable ) {
+            break;
+        }
+        node = parent;
+    }
+    detach( node );
+};
 
-        // We handle this ourselves
-        event.preventDefault();
+var handleEnter = function ( self, shiftKey, range ) {
+    var root = self._root;
+    var block, parent, node, offset, nodeAfterSplit;
 
         // Save undo checkpoint and add any links in the preceding section.
         // Remove any zws so we don't think there's content in an empty
@@ -158,98 +164,173 @@ var keyHandlers = {
         self._removeZWS();
         self._getRangeAndRemoveBookmark( range );
 
-        // Selected text is overwritten, therefore delete the contents
-        // to collapse selection.
-        if ( !range.collapsed ) {
-            deleteContentsOfRange( range, root );
+    // Selected text is overwritten, therefore delete the contents
+    // to collapse selection.
+    if ( !range.collapsed ) {
+        deleteContentsOfRange( range, root );
+    }
+
+    block = getStartBlockOfRange( range, root );
+
+    // Inside a PRE, insert literal newline, unless on blank line.
+    if ( block && ( parent = getNearest( block, root, 'PRE' ) ) ) {
+        moveRangeBoundariesDownTree( range );
+        node = range.startContainer;
+        offset = range.startOffset;
+        if ( node.nodeType !== TEXT_NODE ) {
+            node = self._doc.createTextNode( '' );
+            parent.insertBefore( node, parent.firstChild );
         }
-
-        block = getStartBlockOfRange( range, root );
-
-        // If this is a malformed bit of document or in a table;
-        // just play it safe and insert a <br>.
-        if ( !block || /^T[HD]$/.test( block.nodeName ) ) {
-            // If inside an <a>, move focus out
-            parent = getNearest( range.endContainer, root, 'A' );
-            if ( parent ) {
-                parent = parent.parentNode;
-                moveRangeBoundariesUpTree( range, parent, parent, root );
-                range.collapse( false );
+        // If blank line: split and insert default block
+        if ( !shiftKey &&
+                ( node.data.charAt( offset - 1 ) === '\n' ||
+                    rangeDoesStartAtBlockBoundary( range, root ) ) &&
+                ( node.data.charAt( offset ) === '\n' ||
+                    rangeDoesEndAtBlockBoundary( range, root ) ) ) {
+            node.deleteData( offset && offset - 1, offset ? 2 : 1 );
+            nodeAfterSplit =
+                split( node, offset && offset - 1, root, root );
+            node = nodeAfterSplit.previousSibling;
+            if ( !node.textContent ) {
+                detach( node );
             }
-            insertNodeInRange( range, self.createElement( 'BR' ) );
-            range.collapse( false );
-            self.setSelection( range );
-            self._updatePath( range, true );
-            return;
-        }
-
-        // If in a list, we'll split the LI instead.
-        if ( parent = getNearest( block, root, 'LI' ) ) {
-            block = parent;
-        }
-
-        if ( isEmptyBlock( block ) ) {
-            // Break list
-            if ( getNearest( block, root, 'UL' ) ||
-                    getNearest( block, root, 'OL' ) ) {
-                return self.decreaseListLevel( range );
+            node = self.createDefaultBlock();
+            nodeAfterSplit.parentNode.insertBefore( node, nodeAfterSplit );
+            if ( !nodeAfterSplit.textContent ) {
+                detach( nodeAfterSplit );
             }
-            // Break blockquote
-            else if ( getNearest( block, root, 'BLOCKQUOTE' ) ) {
-                return self.modifyBlocks( removeBlockQuote, range );
+            range.setStart( node, 0 );
+        } else {
+            node.insertData( offset, '\n' );
+            fixCursor( parent, root );
+            // Firefox bug: if you set the selection in the text node after
+            // the new line, it draws the cursor before the line break still
+            // but if you set the selection to the equivalent position
+            // in the parent, it works.
+            if ( node.length === offset + 1 ) {
+                range.setStartAfter( node );
+            } else {
+                range.setStart( node, offset + 1 );
             }
         }
-
-        // Otherwise, split at cursor point.
-        nodeAfterSplit = splitBlock( self, block,
-            range.startContainer, range.startOffset );
-
-        // Clean up any empty inlines if we hit enter at the beginning of the
-        // block
-        removeZWS( block );
-        removeEmptyInlines( block );
-        fixCursor( block, root );
-
-        // Focus cursor
-        // If there's a <b>/<i> etc. at the beginning of the split
-        // make sure we focus inside it.
-        while ( nodeAfterSplit.nodeType === ELEMENT_NODE ) {
-            var child = nodeAfterSplit.firstChild,
-                next;
-
-            // Don't continue links over a block break; unlikely to be the
-            // desired outcome.
-            if ( nodeAfterSplit.nodeName === 'A' &&
-                    ( !nodeAfterSplit.textContent ||
-                        nodeAfterSplit.textContent === ZWS ) ) {
-                child = self._doc.createTextNode( '' );
-                replaceWith( nodeAfterSplit, child );
-                nodeAfterSplit = child;
-                break;
-            }
-
-            while ( child && child.nodeType === TEXT_NODE && !child.data ) {
-                next = child.nextSibling;
-                if ( !next || next.nodeName === 'BR' ) {
-                    break;
-                }
-                detach( child );
-                child = next;
-            }
-
-            // 'BR's essentially don't count; they're a browser hack.
-            // If you try to select the contents of a 'BR', FF will not let
-            // you type anything!
-            if ( !child || child.nodeName === 'BR' ||
-                    ( child.nodeType === TEXT_NODE && !isPresto ) ) {
-                break;
-            }
-            nodeAfterSplit = child;
-        }
-        range = self.createRange( nodeAfterSplit, 0 );
+        range.collapse( true );
         self.setSelection( range );
         self._updatePath( range, true );
+        self._docWasChanged();
+        return;
+    }
+
+    // If this is a malformed bit of document or in a table;
+    // just play it safe and insert a <br>.
+    if ( !block || shiftKey || /^T[HD]$/.test( block.nodeName ) ) {
+        // If inside an <a>, move focus out
+        moveRangeBoundaryOutOf( range, 'A', root );
+        insertNodeInRange( range, self.createElement( 'BR' ) );
+        range.collapse( false );
+        self.setSelection( range );
+        self._updatePath( range, true );
+        return;
+    }
+
+    // If in a list, we'll split the LI instead.
+    if ( parent = getNearest( block, root, 'LI' ) ) {
+        block = parent;
+    }
+
+    if ( isEmptyBlock( block ) ) {
+        // Break list
+        if ( getNearest( block, root, 'UL' ) ||
+                getNearest( block, root, 'OL' ) ) {
+            return self.decreaseListLevel( range );
+        }
+        // Break blockquote
+        else if ( getNearest( block, root, 'BLOCKQUOTE' ) ) {
+            return self.modifyBlocks( removeBlockQuote, range );
+        }
+    }
+
+    // Otherwise, split at cursor point.
+    nodeAfterSplit = splitBlock( self, block,
+        range.startContainer, range.startOffset );
+
+    // Clean up any empty inlines if we hit enter at the beginning of the
+    // block
+    removeZWS( block );
+    removeEmptyInlines( block );
+    fixCursor( block, root );
+
+    // Focus cursor
+    // If there's a <b>/<i> etc. at the beginning of the split
+    // make sure we focus inside it.
+    while ( nodeAfterSplit.nodeType === ELEMENT_NODE ) {
+        var child = nodeAfterSplit.firstChild,
+            next;
+
+        // Don't continue links over a block break; unlikely to be the
+        // desired outcome.
+        if ( nodeAfterSplit.nodeName === 'A' &&
+                ( !nodeAfterSplit.textContent ||
+                    nodeAfterSplit.textContent === ZWS ) ) {
+            child = self._doc.createTextNode( '' );
+            replaceWith( nodeAfterSplit, child );
+            nodeAfterSplit = child;
+            break;
+        }
+
+        while ( child && child.nodeType === TEXT_NODE && !child.data ) {
+            next = child.nextSibling;
+            if ( !next || next.nodeName === 'BR' ) {
+                break;
+            }
+            detach( child );
+            child = next;
+        }
+
+        // 'BR's essentially don't count; they're a browser hack.
+        // If you try to select the contents of a 'BR', FF will not let
+        // you type anything!
+        if ( !child || child.nodeName === 'BR' ||
+                child.nodeType === TEXT_NODE ) {
+            break;
+        }
+        nodeAfterSplit = child;
+    }
+    range = self.createRange( nodeAfterSplit, 0 );
+    self.setSelection( range );
+    self._updatePath( range, true );
+};
+
+var keyHandlers = {
+    // This song and dance is to force iOS to do enable the shift key
+    // automatically on enter. When you do the DOM split manipulation yourself,
+    // WebKit doesn't reset the IME state and so presents auto-complete options
+    // as though you were continuing to type on the previous line, and doesn't
+    // auto-enable the shift key. The old trick of blurring and focussing
+    // again no longer works in iOS 13, and I tried various execCommand options
+    // but they didn't seem to do anything. The only solution I've found is to
+    // let iOS handle the enter key, then after it's done that reset the HTML
+    // to what it was before and handle it properly in Squire; the IME state of
+    // course doesn't reset so you end up in the correct state!
+    enter: isIOS ? function ( self, event, range ) {
+        self._saveRangeToBookmark( range );
+        var html = self._getHTML();
+        var restoreAndDoEnter = function () {
+            self.removeEventListener( 'keyup', restoreAndDoEnter );
+            self._setHTML( html );
+            range = self._getRangeAndRemoveBookmark();
+            // Ignore the shift key on iOS, as this is for auto-capitalisation.
+            handleEnter( self, false, range );
+        };
+        self.addEventListener( 'keyup', restoreAndDoEnter );
+    } : function ( self, event, range ) {
+        event.preventDefault();
+        handleEnter( self, event.shiftKey, range );
     },
+
+    'shift-enter': function ( self, event, range ) {
+        return self._keyHandlers.enter( self, event, range );
+    },
+
     backspace: function ( self, event, range ) {
         var root = self._root;
         self._removeZWS();
@@ -277,7 +358,7 @@ var keyHandlers = {
             if ( previous ) {
                 // If not editable, just delete whole block.
                 if ( !previous.isContentEditable ) {
-                    detach( previous );
+                    detachUneditableNode( previous, root );
                     return;
                 }
                 // Otherwise merge.
@@ -344,7 +425,7 @@ var keyHandlers = {
             if ( next ) {
                 // If not editable, just delete whole block.
                 if ( !next.isContentEditable ) {
-                    detach( next );
+                    detachUneditableNode( next, root );
                     return;
                 }
                 // Otherwise merge.
@@ -422,7 +503,8 @@ var keyHandlers = {
         }
     },
     space: function ( self, _, range ) {
-        var node, parent;
+        var node;
+        var root = self._root;
         self._recordUndoState( range );
         self._getRangeAndRemoveBookmark( range );
 
@@ -430,17 +512,18 @@ var keyHandlers = {
         // outside of the link (<a>foo</a>|) so that the space is not part of
         // the link text.
         node = range.endContainer;
-        parent = node.parentNode;
         if ( range.collapsed && range.endOffset === getLength( node ) ) {
-            if ( node.nodeName === 'A' ) {
-                range.setStartAfter( node );
-            } else if ( parent.nodeName === 'A' && !node.nextSibling ) {
-                range.setStartAfter( parent );
-            }
+            do {
+                if ( node.nodeName === 'A' ) {
+                    range.setStartAfter( node );
+                    break;
+                }
+            } while ( !node.nextSibling &&
+                ( node = node.parentNode ) && node !== root );
         }
         // Delete the selection if not collapsed
         if ( !range.collapsed ) {
-            deleteContentsOfRange( range, self._root );
+            deleteContentsOfRange( range, root );
             self._ensureBottomLine();
             self.setSelection( range );
             self._updatePath( range, true );
@@ -489,16 +572,46 @@ if ( !isMac ) {
     };
 }
 
+const changeIndentationLevel = function ( methodIfInQuote, methodIfInList ) {
+    return function ( self, event ) {
+        event.preventDefault();
+        var path = self.getPath();
+        if ( /(?:^|>)BLOCKQUOTE/.test( path ) ||
+                !/(?:^|>)[OU]L/.test( path ) ) {
+            self[ methodIfInQuote ]();
+        } else {
+            self[ methodIfInList ]();
+        }
+    };
+};
+
+const toggleList = function ( listRegex, methodIfNotInList ) {
+    return function ( self, event ) {
+        event.preventDefault();
+        var path = self.getPath();
+        if ( !listRegex.test( path ) ) {
+            self[ methodIfNotInList ]();
+        } else {
+            self.removeList();
+        }
+    };
+};
+
 keyHandlers[ ctrlKey + 'b' ] = mapKeyToFormat( 'B' );
 keyHandlers[ ctrlKey + 'i' ] = mapKeyToFormat( 'I' );
 keyHandlers[ ctrlKey + 'u' ] = mapKeyToFormat( 'U' );
 keyHandlers[ ctrlKey + 'shift-7' ] = mapKeyToFormat( 'S' );
 keyHandlers[ ctrlKey + 'shift-5' ] = mapKeyToFormat( 'SUB', { tag: 'SUP' } );
 keyHandlers[ ctrlKey + 'shift-6' ] = mapKeyToFormat( 'SUP', { tag: 'SUB' } );
-keyHandlers[ ctrlKey + 'shift-8' ] = mapKeyTo( 'makeUnorderedList' );
-keyHandlers[ ctrlKey + 'shift-9' ] = mapKeyTo( 'makeOrderedList' );
-keyHandlers[ ctrlKey + '[' ] = mapKeyTo( 'decreaseQuoteLevel' );
-keyHandlers[ ctrlKey + ']' ] = mapKeyTo( 'increaseQuoteLevel' );
+keyHandlers[ ctrlKey + 'shift-8' ] =
+    toggleList( /(?:^|>)UL/, 'makeUnorderedList' );
+keyHandlers[ ctrlKey + 'shift-9' ] =
+    toggleList( /(?:^|>)OL/, 'makeOrderedList' );
+keyHandlers[ ctrlKey + '[' ] =
+    changeIndentationLevel( 'decreaseQuoteLevel', 'decreaseListLevel' );
+keyHandlers[ ctrlKey + ']' ] =
+    changeIndentationLevel( 'increaseQuoteLevel', 'increaseListLevel' );
+keyHandlers[ ctrlKey + 'd' ] = mapKeyTo( 'toggleCode' );
 keyHandlers[ ctrlKey + 'y' ] = mapKeyTo( 'redo' );
 keyHandlers[ ctrlKey + 'z' ] = mapKeyTo( 'undo' );
 keyHandlers[ ctrlKey + 'shift-z' ] = mapKeyTo( 'redo' );
