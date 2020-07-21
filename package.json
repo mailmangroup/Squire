@@ -25,7 +25,7 @@
   "homepage": "https://github.com/neilj/Squire",
   "devDependencies": {
     "mocha": "2.2.5",
-    "uglify-js": "^2.4.15",
+    "uglify-js": "^2.8.29",
     "unexpected": "8.2.0"
   }
 }
