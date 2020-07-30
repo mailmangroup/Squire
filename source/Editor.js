@@ -99,6 +99,9 @@ function Squire ( root, config ) {
     // Grammarly breaks the editor, *sigh*
     root.setAttribute( 'data-gramm', 'false' );
 
+    // For internal development
+    root.setAttribute( 'data-kawo', '30072020' );
+
     // Remove Firefox's built-in controls
     try {
         doc.execCommand( 'enableObjectResizing', false, 'false' );
