@@ -453,9 +453,13 @@ function fixCursor ( node, root ) {
             }
         }
     } else if ( !node.querySelector( 'BR' ) ) {
-        fixer = createElement( doc, 'BR' );
-        while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
-            node = child;
+
+        // KAWO: ONLY INSERT BR IF BLOCK ELEMENT IS COMPLETELY EMPTY (CONSISTENT WITH WECHAT BACKEND EDITOR)
+        if ( !node.firstChild ) {
+            fixer = createElement( doc, 'BR' );
+            while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
+                node = child;
+            }
         }
     }
     if ( fixer ) {
@@ -2692,7 +2696,7 @@ function Squire ( root, config ) {
     root.setAttribute( 'data-gramm', 'false' );
 
     // For internal development
-    root.setAttribute( 'data-kawo', '30072020' );
+    root.setAttribute( 'data-kawo', '05082020' );
 
     // Remove Firefox's built-in controls
     try {

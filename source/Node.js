@@ -286,9 +286,13 @@ function fixCursor ( node, root ) {
             }
         }
     } else if ( !node.querySelector( 'BR' ) ) {
-        fixer = createElement( doc, 'BR' );
-        while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
-            node = child;
+
+        // KAWO: ONLY INSERT BR IF BLOCK ELEMENT IS COMPLETELY EMPTY (CONSISTENT WITH WECHAT BACKEND EDITOR)
+        if ( !node.firstChild ) {
+            fixer = createElement( doc, 'BR' );
+            while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
+                node = child;
+            }
         }
     }
     if ( fixer ) {
