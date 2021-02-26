@@ -321,7 +321,7 @@ function fixContainer ( container, root ) {
     for ( i = 0, l = children.length; i < l; i += 1 ) {
         child = children[i];
         isBR = child.nodeName === 'BR';
-        if ( child.nodeName === 'HR' ) {
+        if ( child.nodeName === 'HR' || child.nodeName.toUpperCase() === 'SVG' ) {
             i -= 1;
             l -= 1;
         } else if ( !isBR && isInline( child ) ) {

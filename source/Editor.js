@@ -100,7 +100,7 @@ function Squire ( root, config ) {
     root.setAttribute( 'data-gramm', 'false' );
 
     // For internal development
-    root.setAttribute( 'data-kawo', '05082020' );
+    root.setAttribute( 'data-kawo', '26022021' );
 
     // Remove Firefox's built-in controls
     try {

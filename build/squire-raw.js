@@ -488,7 +488,7 @@ function fixContainer ( container, root ) {
     for ( i = 0, l = children.length; i < l; i += 1 ) {
         child = children[i];
         isBR = child.nodeName === 'BR';
-        if ( child.nodeName === 'HR' ) {
+        if ( child.nodeName === 'HR' || child.nodeName.toUpperCase() === 'SVG' ) {
             i -= 1;
             l -= 1;
         } else if ( !isBR && isInline( child ) ) {
@@ -2696,7 +2696,7 @@ function Squire ( root, config ) {
     root.setAttribute( 'data-gramm', 'false' );
 
     // For internal development
-    root.setAttribute( 'data-kawo', '05082020' );
+    root.setAttribute( 'data-kawo', '26022021' );
 
     // Remove Firefox's built-in controls
     try {
