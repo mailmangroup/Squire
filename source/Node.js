@@ -318,6 +318,9 @@ function fixContainer ( container, root ) {
     var i, l, child, isBR;
     var config = root.__squire__._config;
 
+    // If preserveTree, simply return
+    if ( config.preserveTree ) return container;
+
     for ( i = 0, l = children.length; i < l; i += 1 ) {
         child = children[i];
         isBR = child.nodeName === 'BR';

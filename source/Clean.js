@@ -179,6 +179,10 @@ var walker = new TreeWalker( null, SHOW_TEXT|SHOW_ELEMENT );
     2. Convert inline tags into our preferred format.
 */
 var cleanTree = function cleanTree ( node, config, preserveWS ) {
+
+    // If preserveTree, simply return
+     if ( config.preserveTree ) return node;
+
     var children = node.childNodes,
         nonInlineParent, i, l, child, nodeName, nodeType, rewriter, childLength,
         startsWithWS, endsWithWS, data, sibling;
@@ -317,6 +321,11 @@ var isLineBreak = function ( br, isLBIfEmptyBlock ) {
 // elements at the end of each block will then have them added back in a later
 // fixCursor method call.
 var cleanupBRs = function ( node, root, keepForBlankLine ) {
+
+    // If preserveTree, simply return
+    var config = root.__squire__._config;
+    if ( config.preserveTree ) return;
+
     var brs = node.querySelectorAll( 'BR' );
     var brBreaksLine = [];
     var l = brs.length;
